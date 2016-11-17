@@ -72,31 +72,31 @@ bool PointCloudLocalization::Initialize(const ros::NodeHandle& n) {
 
 bool PointCloudLocalization::LoadParameters(const ros::NodeHandle& n) {
   // Load frame ids.
-  if (!pu::Get("frame_id/fixed", fixed_frame_id_)) return false;
-  if (!pu::Get("frame_id/base", base_frame_id_)) return false;
+  if (!pu::get("frame_id/fixed", fixed_frame_id_)) return false;
+  if (!pu::get("frame_id/base", base_frame_id_)) return false;
 
   // Load initial position.
   double init_x = 0.0, init_y = 0.0, init_z = 0.0;
   double init_roll = 0.0, init_pitch = 0.0, init_yaw = 0.0;
-  if (!pu::Get("init/position/x", init_x)) return false;
-  if (!pu::Get("init/position/y", init_y)) return false;
-  if (!pu::Get("init/position/z", init_z)) return false;
-  if (!pu::Get("init/orientation/roll", init_roll)) return false;
-  if (!pu::Get("init/orientation/pitch", init_pitch)) return false;
-  if (!pu::Get("init/orientation/yaw", init_yaw)) return false;
+  if (!pu::get("init/position/x", init_x)) return false;
+  if (!pu::get("init/position/y", init_y)) return false;
+  if (!pu::get("init/position/z", init_z)) return false;
+  if (!pu::get("init/orientation/roll", init_roll)) return false;
+  if (!pu::get("init/orientation/pitch", init_pitch)) return false;
+  if (!pu::get("init/orientation/yaw", init_yaw)) return false;
 
   integrated_estimate_.translation = gu::Vec3(init_x, init_y, init_z);
   integrated_estimate_.rotation = gu::Rot3(init_roll, init_pitch, init_yaw);
 
   // Load algorithm parameters.
-  if (!pu::Get("localization/tf_epsilon", params_.tf_epsilon)) return false;
-  if (!pu::Get("localization/corr_dist", params_.corr_dist)) return false;
-  if (!pu::Get("localization/iterations", params_.iterations)) return false;
+  if (!pu::get("localization/tf_epsilon", params_.tf_epsilon)) return false;
+  if (!pu::get("localization/corr_dist", params_.corr_dist)) return false;
+  if (!pu::get("localization/iterations", params_.iterations)) return false;
 
-  if (!pu::Get("localization/transform_thresholding", transform_thresholding_))
+  if (!pu::get("localization/transform_thresholding", transform_thresholding_))
     return false;
-  if (!pu::Get("localization/max_translation", max_translation_)) return false;
-  if (!pu::Get("localization/max_rotation", max_rotation_)) return false;
+  if (!pu::get("localization/max_translation", max_translation_)) return false;
+  if (!pu::get("localization/max_rotation", max_rotation_)) return false;
 
   return true;
 }
@@ -132,7 +132,7 @@ void PointCloudLocalization::SetIntegratedEstimate(
 
   // Publish transform between fixed frame and localization frame.
   geometry_msgs::TransformStamped tf;
-  tf.transform = gr::ToRosTransform(integrated_estimate_);
+  tf.transform = gr::toTransform(integrated_estimate_);
   tf.header.stamp = stamp_;
   tf.header.frame_id = fixed_frame_id_;
   tf.child_frame_id = base_frame_id_;
@@ -156,9 +156,9 @@ bool PointCloudLocalization::TransformPointsToFixedFrame(
   // Compose the current incremental estimate (from odometry) with the
   // integrated estimate, and transform the incoming point cloud.
   const gu::Transform3 estimate =
-      gu::PoseUpdate(integrated_estimate_, incremental_estimate_);
-  const Eigen::Matrix<double, 3, 3> R = estimate.rotation.Eigen();
-  const Eigen::Matrix<double, 3, 1> T = estimate.translation.Eigen();
+      gu::pose_update(integrated_estimate_, incremental_estimate_);
+  const Eigen::Matrix<double, 3, 3> R = estimate.rotation.eigen();
+  const Eigen::Matrix<double, 3, 1> T = estimate.translation.eigen();
 
   Eigen::Matrix4d tf;
   tf.block(0, 0, 3, 3) = R;
@@ -178,10 +178,10 @@ bool PointCloudLocalization::TransformPointsToSensorFrame(
 
   // Compose the current incremental estimate (from odometry) with the
   // integrated estimate, then invert to go from world to sensor frame.
-  const gu::Transform3 estimate = gu::PoseInverse(
-      gu::PoseUpdate(integrated_estimate_, incremental_estimate_));
-  const Eigen::Matrix<double, 3, 3> R = estimate.rotation.Eigen();
-  const Eigen::Matrix<double, 3, 1> T = estimate.translation.Eigen();
+  const gu::Transform3 estimate = gu::pose_inverse(
+      gu::pose_update(integrated_estimate_, incremental_estimate_));
+  const Eigen::Matrix<double, 3, 3> R = estimate.rotation.eigen();
+  const Eigen::Matrix<double, 3, 1> T = estimate.translation.eigen();
 
   Eigen::Matrix4d tf;
   tf.block(0, 0, 3, 3) = R;
@@ -230,18 +230,18 @@ bool PointCloudLocalization::MeasurementUpdate(const PointCloud::Ptr& query,
 
   // Only update if the transform is small enough.
   if (!transform_thresholding_ ||
-      (pose_update.translation.Norm() <= max_translation_ &&
-       pose_update.rotation.ToEulerZYX().Norm() <= max_rotation_)) {
-    incremental_estimate_ = gu::PoseUpdate(incremental_estimate_, pose_update);
+      (pose_update.translation.norm() <= max_translation_ &&
+       pose_update.rotation.toEulerZYX().norm() <= max_rotation_)) {
+    incremental_estimate_ = gu::pose_update(incremental_estimate_, pose_update);
   } else {
     ROS_WARN(
         " %s: Discarding incremental transformation with norm (t: %lf, r: %lf)",
-        name_.c_str(), pose_update.translation.Norm(),
-        pose_update.rotation.ToEulerZYX().Norm());
+        name_.c_str(), pose_update.translation.norm(),
+        pose_update.rotation.toEulerZYX().norm());
   }
 
   integrated_estimate_ =
-      gu::PoseUpdate(integrated_estimate_, incremental_estimate_);
+      gu::pose_update(integrated_estimate_, incremental_estimate_);
 
   // Convert pose estimates to ROS format and publish.
   PublishPose(incremental_estimate_, incremental_estimate_pub_);
@@ -254,7 +254,7 @@ bool PointCloudLocalization::MeasurementUpdate(const PointCloud::Ptr& query,
 
   // Publish transform between fixed frame and localization frame.
   geometry_msgs::TransformStamped tf;
-  tf.transform = gr::ToRosTransform(integrated_estimate_);
+  tf.transform = gr::toTransform(integrated_estimate_);
   tf.header.stamp = stamp_;
   tf.header.frame_id = fixed_frame_id_;
   tf.child_frame_id = base_frame_id_;
@@ -282,7 +282,7 @@ void PointCloudLocalization::PublishPose(const gu::Transform3& pose,
 
   // Convert from gu::Transform3 to ROS's PoseStamped type and publish.
   geometry_msgs::PoseStamped ros_pose;
-  ros_pose.pose = gr::ToRosPose(pose);
+  ros_pose.pose = gr::toPose(pose);
   ros_pose.header.frame_id = fixed_frame_id_;
   ros_pose.header.stamp = stamp_;
   pub.publish(ros_pose);
